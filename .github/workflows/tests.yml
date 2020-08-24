@@ -1,0 +1,31 @@
+on:
+  push:
+  pull_request:
+
+name: CI (compiler)
+
+jobs:
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v2
+      - name: Install Rust
+        with:
+          toolchain: stable
+      - name: Test
+        uses: actions/cargo@v1
+        with:
+          command: test
+          args: --release
+      - name: Lint
+        uses: actions/cargo@v1
+        with:
+          command: clippy
+          args: --all-targets --all-features -- -D warnings
+      - name: Check formatting
+        uses: actions/cargo@v1
+        with:
+          command: fmt
+          args: -- --check
