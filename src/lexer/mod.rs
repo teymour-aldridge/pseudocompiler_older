@@ -36,6 +36,7 @@ pub enum Punctuation {
     ByRef,
     ByVal,
     Colon,
+    Comma,
 }
 
 #[derive(Debug, Clone)]
@@ -49,6 +50,10 @@ pub enum Token {
     Ident(String),
     Punctuation(Punctuation),
     Operator(Operator),
+    Integer(i64),
+    String(String),
+    Comment(String),
+    MultiLineComment(String),
 }
 
 pub fn lex(input: &mut str) -> Result<Vec<Token>, LexError> {
@@ -108,7 +113,7 @@ pub enum LexError {
     /// This will be made more intelligible soon.
     IndentationError,
     #[error("the input ended unexpectedly")]
-    UnexpectedEndOfInput
+    UnexpectedEndOfInput,
 }
 
 impl Cursor {
@@ -127,7 +132,7 @@ impl Cursor {
     pub fn save_loc(&self) -> Loc {
         *&self.location
     }
-    /// Lexes any assignment. 
+    /// Lexes any assignment.
     /// This includes the use of the "syntactic sugar" `+=`, `*=`  and `-=`.
     pub fn lex_assignment_statement(&mut self) -> Result<(), LexError> {
         todo!()
@@ -137,7 +142,7 @@ impl Cursor {
         if let Some(token) = self.peek_token() {
             if token.contains('(') {
                 self.lex_application()?;
-                return Ok(())
+                return Ok(());
             }
             match token {
                 "function" => self.lex_function()?,
@@ -145,11 +150,10 @@ impl Cursor {
                 "switch" => self.lex_switch_statement()?,
                 "while" => self.lex_while_statement()?,
                 "for" => self.lex_for_statement()?,
-                _ => self.lex_assignment_statement()?
+                _ => self.lex_assignment_statement()?,
             };
             Ok(())
-        }
-        else {
+        } else {
             Err(LexError::UnexpectedEndOfInput)
         }
     }
@@ -206,7 +210,7 @@ impl Cursor {
     /// Retrieves the next "token" (anything up to the next space).
     #[inline(always)]
     pub fn peek_token(&self) -> Option<&str> {
-        self.input.split(' ').next()   
+        self.input.split(' ').next()
     }
     /// Removes the next character and advances the position of the cursor.
     ///
@@ -289,34 +293,40 @@ impl Cursor {
     }
     /// Lexes the specified item of punctuation.
     pub fn lex_specific_punctuation(&mut self, punctuation: Punctuation) -> Result<(), LexError> {
-        let start = self.save_loc();
-        match punctuation {
-            Punctuation::OpenRoundBracket => {
-                if let Some(next) = self.eat() {
-                    if next == '(' {
-                        self.output
-                            .push(Token::Punctuation(Punctuation::OpenRoundBracket));
-                        return Ok(());
-                    }
-                    return Err(LexError::UnexpectedToken(SpannedToken {
-                        span: Span::new(start, self.save_loc()),
-                        token: next.to_string(),
-                    }));
+        macro_rules! punctuation {
+            ($self:ident, $punctuation:ident, $(($string:expr => $punct:ident)),+) => {
+                let start = $self.save_loc();
+                match $punctuation {
+                    $(
+                        $crate::lexer::Punctuation::$punct => {
+                            if $self.input.starts_with($string) {
+                                for _ in 1..$string.len() {
+                                    self.eat();
+                                }
+                                $self.output.push(
+                                    $crate::lexer::Token::Punctuation(
+                                        $crate::lexer::Punctuation::$punct
+                                    )
+                                );
+                                return Ok(())
+                            } else {
+                                // todo fix this
+                                panic!("expected token")
+                            }
+                        }
+                    )*
                 }
             }
-            _ => {
-                // todo: fix to handle if there are no more tokens
-                let actual_punctuation = self.peek().unwrap();
-                return Err(LexError::UnexpectedToken(SpannedToken {
-                    span: Span::new(start, {
-                        let mut loc = self.save_loc();
-                        loc.col += 1;
-                        loc
-                    }),
-                    token: actual_punctuation.to_string(),
-                }));
-            }
         }
+        let start = self.save_loc();
+        punctuation!(self, punctuation,
+            ("(" => OpenRoundBracket),
+            (")" => CloseRoundBracket),
+            (":byRef" => ByRef),
+            (":byVal" => ByVal),
+            (":" => Colon),
+            ("," => Comma)
+        );
         Ok(())
     }
     /// Lexes `argument:byRef` and `argument:byVal`
@@ -427,10 +437,54 @@ impl Cursor {
     }
     /// Lexes an integer.
     pub fn lex_integer(&mut self) -> Result<(), LexError> {
-        todo!()
+        if let Some(next) = self.peek_token() {
+            match next.parse::<i64>() {
+                Ok(integer) => {
+                    self.output.push(Token::Integer(integer));
+                    return Ok(());
+                }
+                Err(_) => {
+                    return Err(LexError::UnexpectedToken(SpannedToken::new(
+                        Span::new(self.save_loc(), {
+                            let mut loc = self.save_loc();
+                            loc.col += next.len() as u32;
+                            loc
+                        }),
+                        next.to_string(),
+                    )))
+                }
+            }
+        }
+        Ok(())
     }
     /// Lexes an operator.
     pub fn lex_operator(&mut self, operator: Operator) -> Result<(), LexError> {
+        macro_rules! operators {
+            ($self:ident, $operator:ident, $(($string:expr => $op:ident)),+) => {
+                let start = $self.save_loc();
+                match $operator {
+                    $(
+                        $crate::lexer::Operator::$op => {
+                            if self.input.starts_with($string) {
+                                for _ in 1..$string.len() {
+                                    self.output.push($crate::lexer::Token::Operator(
+                                        $crate::lexer::Operator::$op
+                                    ))
+                                }
+                                return Ok(())
+                            }
+                            else {
+                                panic!()
+                            }
+                        }
+                    )+
+                }
+            };
+        }
+        operators!(
+            self, operator,
+                ("=" => Equals)
+        );
         todo!()
     }
     /// Lexes a for statement

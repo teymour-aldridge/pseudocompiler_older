@@ -1,4 +1,4 @@
-mod analysis;
+mod edu_assignments;
 mod errorfmt;
 mod js_codegen;
 mod lexer;
