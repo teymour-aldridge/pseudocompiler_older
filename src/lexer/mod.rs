@@ -45,6 +45,7 @@ pub enum Operator {
 }
 
 #[derive(Debug, Clone)]
+/// A single token lexed from the input stream.
 pub enum Token {
     Keyword(Keyword),
     Ident(String),
@@ -54,10 +55,13 @@ pub enum Token {
     String(String),
     Comment(String),
     MultiLineComment(String),
+    Float(f64),
 }
 
 pub fn lex(input: &mut str) -> Result<Vec<Token>, LexError> {
-    todo!()
+    let mut cursor  = Cursor::new(input.to_string());
+    cursor.lex_statement()?;
+    Ok(cursor.output)
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -67,8 +71,8 @@ pub struct Loc {
 }
 
 impl Loc {
-    pub fn sum(&self) -> u32 {
-        self.line + self.col
+    pub fn new(line: u32, col: u32) -> Self {
+        Self { line, col }
     }
 }
 
@@ -118,27 +122,48 @@ pub enum LexError {
 
 impl Cursor {
     /// Creates a new cursor from a string input.
-    pub fn new(string: String) -> Self {
-        todo!()
+    fn new(string: String) -> Self {
+        Self {
+            input: string,
+            output: vec![],
+            location: Loc::new(0, 0),
+            current_indentation: 0,
+        }
     }
     /// Lexes an application of a function.
     ///
     /// The term "application" originally comes from Alonzo Church's lambda calculus which is a way
     /// of "doing" mathematics using only functions.
-    pub fn lex_application(&mut self) -> Result<(), LexError> {
-        todo!()
+    fn lex_application(&mut self) -> Result<(), LexError> {
+        self.lex_identifier()?;
+        self.lex_specific_punctuation(Punctuation::OpenRoundBracket)?;
+        loop {
+            let next = self.peek().unwrap();
+            if !next.is_alphanumeric() {
+                break;
+            }
+            self.lex_identifier()?;
+            if self.peek().unwrap() == ',' {
+                self.lex_specific_punctuation(Punctuation::Comma)?;
+            }
+        }
+        self.lex_specific_punctuation(Punctuation::CloseRoundBracket)?;
+        Ok(())
     }
     /// Retrieves the current location of the cursor.
-    pub fn save_loc(&self) -> Loc {
+    fn save_loc(&self) -> Loc {
         *&self.location
     }
     /// Lexes any assignment.
     /// This includes the use of the "syntactic sugar" `+=`, `*=`  and `-=`.
-    pub fn lex_assignment_statement(&mut self) -> Result<(), LexError> {
-        todo!()
+    fn lex_assignment_statement(&mut self) -> Result<(), LexError> {
+        self.lex_identifier()?;
+        self.lex_specific_operator(Operator::Equals)?;
+        self.lex_expression()?;
+        Ok(())
     }
     /// Lexes any valid statement.
-    pub fn lex_statement(&mut self) -> Result<(), LexError> {
+    fn lex_statement(&mut self) -> Result<(), LexError> {
         if let Some(token) = self.peek_token() {
             if token.contains('(') {
                 self.lex_application()?;
@@ -157,8 +182,7 @@ impl Cursor {
             Err(LexError::UnexpectedEndOfInput)
         }
     }
-
-    pub fn count_indents(&self) -> u32 {
+    fn count_indents(&self) -> u32 {
         let mut count = 0;
         let mut iterator = self.input.chars();
         while let Some(next) = iterator.next() {
@@ -174,7 +198,7 @@ impl Cursor {
     }
 
     /// Lexes code in an indented block.
-    pub fn lex_block(&mut self) -> Result<(), LexError> {
+    fn lex_block(&mut self) -> Result<(), LexError> {
         loop {
             let indents = self.count_indents();
             if indents == self.current_indentation {
@@ -191,7 +215,7 @@ impl Cursor {
     }
     /// Eats any whitespace tokens between where the cursor presently is and the next non-whitespace
     /// token.
-    pub fn consume_whitespace(&mut self) {
+    fn consume_whitespace(&mut self) {
         while let Some(next) = self.peek() {
             if next.is_whitespace() {
                 self.eat();
@@ -204,19 +228,19 @@ impl Cursor {
     ///
     /// Returns `None` if there are no more tokens in the stream.
     #[inline(always)]
-    pub fn peek(&self) -> Option<char> {
+    fn peek(&self) -> Option<char> {
         self.input.chars().next()
     }
     /// Retrieves the next "token" (anything up to the next space).
     #[inline(always)]
-    pub fn peek_token(&self) -> Option<&str> {
+    fn peek_token(&self) -> Option<&str> {
         self.input.split(' ').next()
     }
     /// Removes the next character and advances the position of the cursor.
     ///
     /// Returns `None` if there are no more tokens in the stream.
     #[inline(always)]
-    pub fn eat(&mut self) -> Option<char> {
+    fn eat(&mut self) -> Option<char> {
         if self.input.is_empty() {
             return None;
         }
@@ -231,7 +255,7 @@ impl Cursor {
         }
         Some(result)
     }
-    pub fn lex_specific_keyword(&mut self, keyword: Keyword) -> Result<(), LexError> {
+    fn lex_specific_keyword(&mut self, keyword: Keyword) -> Result<(), LexError> {
         macro_rules! keywords {
             ($self:ident, $( [ $string:expr => $keyword:ident ] ),+) => {
                 match keyword {
@@ -277,7 +301,7 @@ impl Cursor {
             ["next" => Next]
         )
     }
-    pub fn lex_ident(&mut self) -> Result<(), LexError> {
+    fn lex_identifier(&mut self) -> Result<(), LexError> {
         let mut output = String::new();
         while let Some(next) = self.peek() {
             if next.is_alphanumeric() {
@@ -292,7 +316,7 @@ impl Cursor {
         Ok(())
     }
     /// Lexes the specified item of punctuation.
-    pub fn lex_specific_punctuation(&mut self, punctuation: Punctuation) -> Result<(), LexError> {
+    fn lex_specific_punctuation(&mut self, punctuation: Punctuation) -> Result<(), LexError> {
         macro_rules! punctuation {
             ($self:ident, $punctuation:ident, $(($string:expr => $punct:ident)),+) => {
                 let start = $self.save_loc();
@@ -330,7 +354,7 @@ impl Cursor {
         Ok(())
     }
     /// Lexes `argument:byRef` and `argument:byVal`
-    pub fn lex_optional_argument_modifier(&mut self) -> Result<(), LexError> {
+    fn lex_optional_argument_modifier(&mut self) -> Result<(), LexError> {
         if let Some(next) = self.peek() {
             if next == ':' {
                 if self.lex_specific_punctuation(Punctuation::ByRef).is_err() {
@@ -341,28 +365,72 @@ impl Cursor {
         Ok(())
     }
     /// Lexes a functions arguments.
-    pub fn lex_function_arguments(&mut self) -> Result<(), LexError> {
+    fn lex_function_arguments(&mut self) -> Result<(), LexError> {
         self.lex_specific_punctuation(Punctuation::OpenRoundBracket)?;
-        self.lex_ident()?;
+        self.lex_identifier()?;
         self.lex_specific_punctuation(Punctuation::CloseRoundBracket)?;
         Ok(())
     }
     /// Lexes a function definition.
-    pub fn lex_function(&mut self) -> Result<(), LexError> {
+    fn lex_function(&mut self) -> Result<(), LexError> {
         self.lex_specific_keyword(Keyword::Function)?;
         self.consume_whitespace();
-        self.lex_ident()?;
+        self.lex_identifier()?;
         self.lex_function_arguments()?;
         self.lex_block()?;
         self.lex_specific_keyword(Keyword::EndFunction)?;
         Ok(())
     }
+    fn lex_float(&mut self) -> Result<(), LexError> {
+        self.output.push(Token::Float(
+            self.peek_token()
+                .expect("missing token")
+                .parse::<f64>()
+                .expect("error parsing float"),
+        ));
+        Ok(())
+    }
     /// Lexes an expression
-    pub fn lex_expression(&mut self) -> Result<(), LexError> {
-        todo!()
+    fn lex_expression(&mut self) -> Result<(), LexError> {
+        let start = self.save_loc();
+        while let Some(item) = self.peek() {
+            if item.is_alphabetic() {
+                if self
+                    .peek_token()
+                    .expect("unexpected end of input")
+                    .contains("(")
+                {
+                    self.lex_application()?;
+                } else {
+                    self.lex_identifier()?;
+                }
+            } else if item.is_numeric() {
+                if self
+                    .peek_token()
+                    .expect("unexpected end of input")
+                    .contains(".")
+                {
+                    self.lex_float()?;
+                } else {
+                    self.lex_integer()?;
+                }
+            } else {
+                if self.lex_any_operator().is_err() {
+                    return Err(LexError::UnexpectedToken(SpannedToken::new(
+                        Span::new(start, {
+                            let mut loc = self.save_loc();
+                            loc.col += 1;
+                            loc
+                        }),
+                        item.to_string(),
+                    )));
+                }
+            }
+        }
+        Ok(())
     }
     /// Lexes an if statement.
-    pub fn lex_if_statement(&mut self) -> Result<(), LexError> {
+    fn lex_if_statement(&mut self) -> Result<(), LexError> {
         self.lex_specific_keyword(Keyword::If)?;
         self.lex_expression()?;
         self.lex_specific_keyword(Keyword::Then)?;
@@ -379,7 +447,7 @@ impl Cursor {
         Ok(())
     }
     /// Consumes as many newlines as is possible.
-    pub fn consume_newlines(&mut self) {
+    fn consume_newlines(&mut self) {
         while let Some(next) = self.peek() {
             if next == '\n' {
                 self.eat();
@@ -389,11 +457,11 @@ impl Cursor {
         }
     }
     /// Lexes a switch statement.
-    pub fn lex_switch_statement(&mut self) -> Result<(), LexError> {
+    fn lex_switch_statement(&mut self) -> Result<(), LexError> {
         self.lex_specific_keyword(Keyword::Switch)?;
         // for the moment expressions cannot be switched on
         // this is only temporary
-        self.lex_ident()?;
+        self.lex_identifier()?;
         self.lex_specific_punctuation(Punctuation::Colon)?;
 
         loop {
@@ -420,14 +488,14 @@ impl Cursor {
         Ok(())
     }
     /// Lexes a while statement
-    pub fn lex_while_statement(&mut self) -> Result<(), LexError> {
+    fn lex_while_statement(&mut self) -> Result<(), LexError> {
         self.lex_specific_keyword(Keyword::While)?;
         self.lex_expression()?;
         self.lex_block()?;
         self.lex_specific_keyword(Keyword::EndWhile)?;
         Ok(())
     }
-    pub fn lex_do_statement(&mut self) -> Result<(), LexError> {
+    fn lex_do_statement(&mut self) -> Result<(), LexError> {
         self.lex_specific_keyword(Keyword::Do)?;
         self.lex_newline()?;
         self.lex_block()?;
@@ -436,7 +504,7 @@ impl Cursor {
         Ok(())
     }
     /// Lexes an integer.
-    pub fn lex_integer(&mut self) -> Result<(), LexError> {
+    fn lex_integer(&mut self) -> Result<(), LexError> {
         if let Some(next) = self.peek_token() {
             match next.parse::<i64>() {
                 Ok(integer) => {
@@ -457,8 +525,29 @@ impl Cursor {
         }
         Ok(())
     }
-    /// Lexes an operator.
-    pub fn lex_operator(&mut self, operator: Operator) -> Result<(), LexError> {
+    fn lex_any_operator(&mut self) -> Result<(), LexError> {
+        // todo: move this out and consolidate all of these definitions into one
+        macro_rules! operators {
+            ($self:ident, $(($string:expr => $op:ident)),+) => {
+                $(
+                    if self.input.starts_with($string) {
+                        self.output.push(
+                            $crate::lexer::Token::Operator($crate::lexer::Operator::$op)
+                        );
+                        return Ok(());
+                    }
+                )+
+                else {
+                    panic!("x")
+                }
+            }
+        }
+        operators!(self,
+            ("=" => Equals)
+        );
+    }
+    /// Lexes a specific operator.
+    fn lex_specific_operator(&mut self, operator: Operator) -> Result<(), LexError> {
         macro_rules! operators {
             ($self:ident, $operator:ident, $(($string:expr => $op:ident)),+) => {
                 let start = $self.save_loc();
@@ -467,14 +556,22 @@ impl Cursor {
                         $crate::lexer::Operator::$op => {
                             if self.input.starts_with($string) {
                                 for _ in 1..$string.len() {
-                                    self.output.push($crate::lexer::Token::Operator(
-                                        $crate::lexer::Operator::$op
-                                    ))
+                                    self.eat();
                                 }
+                                self.output.push($crate::lexer::Token::Operator(
+                                    $crate::lexer::Operator::$op
+                                ));
                                 return Ok(())
                             }
                             else {
-                                panic!()
+                                return Err(
+                                    $crate::lexer::LexError::UnexpectedToken(
+                                        $crate::lexer::SpannedToken::new(
+                                            Span::new(start, self.save_loc()),
+                                            self.peek().unwrap().to_string()
+                                        )
+                                    )
+                                )
                             }
                         }
                     )+
@@ -485,26 +582,25 @@ impl Cursor {
             self, operator,
                 ("=" => Equals)
         );
-        todo!()
     }
     /// Lexes a for statement
-    pub fn lex_for_statement(&mut self) -> Result<(), LexError> {
+    fn lex_for_statement(&mut self) -> Result<(), LexError> {
         self.lex_specific_keyword(Keyword::For)?;
-        self.lex_ident()?;
-        self.lex_operator(Operator::Equals)?;
+        self.lex_identifier()?;
+        self.lex_specific_operator(Operator::Equals)?;
         self.lex_integer()?;
         self.lex_specific_keyword(Keyword::To)?;
         self.lex_newline()?;
         self.lex_block()?;
         // why do they actually do this???
         self.lex_specific_keyword(Keyword::Next)?;
-        self.lex_ident()?;
+        self.lex_identifier()?;
         Ok(())
     }
-    pub fn set_indentation_level(&mut self, level: u32) {
+    fn set_indentation_level(&mut self, level: u32) {
         self.current_indentation = level;
     }
-    pub fn lex_newline(&mut self) -> Result<(), LexError> {
+    fn lex_newline(&mut self) -> Result<(), LexError> {
         self.consume_whitespace();
         if let Some(token) = self.eat() {
             if token == '\n' {
@@ -516,7 +612,7 @@ impl Cursor {
             panic!("unexpected end of input")
         }
     }
-    pub fn lex_two_spaces(&mut self) -> Result<(), LexError> {
+    fn lex_two_spaces(&mut self) -> Result<(), LexError> {
         let mut spaces = 1;
         while spaces < 2 {
             let next = self.peek().expect("unexpected end of input");
@@ -530,7 +626,7 @@ impl Cursor {
         Ok(())
     }
     /// Lexes a unit of indentation.
-    pub fn lex_indentation(&mut self) -> Result<(), LexError> {
+    fn lex_indentation(&mut self) -> Result<(), LexError> {
         let next = self.eat().expect("unexpected end of input");
         if next == '\t' {
             return Ok(());
