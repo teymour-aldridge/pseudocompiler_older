@@ -8,7 +8,12 @@ use crate::lexer::lex;
 
 fn assert_parses_ok(string: &str) {
     let mut string = string.to_string();
-    assert!(lex(string.as_mut_str()).is_ok());
+    match lex(string.as_mut_str()) {
+        Ok(_) => {}
+        Err(e) => {
+            panic!("{:?}", e);
+        }
+    };
 }
 
 fn assert_parses_err(string: &str) {
@@ -73,10 +78,9 @@ pub fn test_lexes_assignment_inside_function() {
 }
 
 #[test]
-pub fn test_lexes_if_statement() {
+pub fn test_lexes_simple_if_statement() {
     assert_parses_ok(
         r#"
-        x = "a"
         if x=="a"
             print("hello world!")
         endif
@@ -88,10 +92,7 @@ pub fn test_lexes_if_statement() {
 pub fn test_lexes_if_statement_with_complex_expression() {
     assert_parses_ok(
         r#"
-        x = "a"
-        y = "b"
-        z = 12
-        if x=="a" AND y=="b" AND z == 12
+        if x=="a" AND y=="b" AND z == 12 then
             print("hello world!")
         endif
     "#,
