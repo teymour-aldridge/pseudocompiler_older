@@ -12,20 +12,21 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@v2
       - name: Install Rust
+        uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
       - name: Test
-        uses: actions/cargo@v1
+        uses: actions-rs/cargo@v1
         with:
           command: test
           args: --release
       - name: Lint
-        uses: actions/cargo@v1
+        uses: actions-rs/cargo@v1
         with:
           command: clippy
           args: --all-targets --all-features -- -D warnings
       - name: Check formatting
-        uses: actions/cargo@v1
+        uses: actions-rs/cargo@v1
         with:
           command: fmt
           args: -- --check
