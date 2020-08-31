@@ -52,6 +52,8 @@ pub enum Operator {
     And,
     Or,
     Not,
+    NotEquals,
+    Increment
 }
 
 #[derive(Debug, Clone)]
@@ -180,7 +182,9 @@ impl Cursor {
     fn lex_assignment_statement(&mut self) -> Result<(), LexError> {
         self.lex_identifier()?;
         self.consume_spaces();
-        self.lex_specific_operator(Operator::Equals)?;
+        if self.lex_specific_operator(Operator::Equals).is_err() {
+            self.lex_specific_operator(Operator::Increment)?;
+        };
         self.consume_spaces();
         self.lex_expression()?;
         Ok(())
@@ -330,6 +334,7 @@ impl Cursor {
                 }
             };
         }
+        self.consume_spaces();
         keywords!(self,
             ["function" => Function],
             ["endfunction" => EndFunction],
@@ -598,7 +603,10 @@ impl Cursor {
     /// Lexes a while statement
     fn lex_while_statement(&mut self) -> Result<(), LexError> {
         self.lex_specific_keyword(Keyword::While)?;
+        self.consume_spaces();
         self.lex_expression()?;
+        self.consume_spaces();
+        self.lex_newline()?;
         self.lex_block()?;
         self.lex_specific_keyword(Keyword::EndWhile)?;
         Ok(())
@@ -689,9 +697,11 @@ impl Cursor {
         }
         operators!(self,
             ("==" => Comparison),
+            ("!=" => NotEquals),
             ("=" => Equals),
             ("*" => Times),
             ("/" => Divide),
+            ("+=" => Increment),
             ("+" => Plus),
             ("-" => Minus),
             ("AND" => And),
@@ -735,7 +745,9 @@ impl Cursor {
             self, operator,
                 ("=" => Equals),
                 ("==" => Comparison),
+                ("!=" => NotEquals),
                 ("*" => Times),
+                ("+=" => Increment),
                 ("+" => Plus),
                 ("-" => Minus),
                 ("/" => Divide),

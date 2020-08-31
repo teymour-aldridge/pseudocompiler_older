@@ -32,6 +32,8 @@ pub fn test_lexes_functions() {
     );
 }
 
+// Procedures are not currently supported.
+/*
 #[test]
 pub fn test_lexes_procedure_byref() {
     assert_parses_ok(
@@ -42,6 +44,7 @@ pub fn test_lexes_procedure_byref() {
     "#,
     );
 }
+*/
 
 #[test]
 pub fn test_lexes_while_statement() {
@@ -81,7 +84,7 @@ pub fn test_lexes_assignment_inside_function() {
 pub fn test_lexes_simple_if_statement() {
     assert_parses_ok(
         r#"
-        if x=="a"
+        if x=="a" then
             print("hello world!")
         endif
     "#,
